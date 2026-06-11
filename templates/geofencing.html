@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>ZIMSTAT - Enumerator Geofencing Portal</title>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <!-- Leaflet Map CSS/JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    
+    <!-- Turf.js for client-side Geofencing -->
+    <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        :root {
+            --bg-color: #07162c;
+            --surface-color: rgba(255, 255, 255, 0.05);
+            --card-bg: rgba(255, 255, 255, 0.08);
+            --border-color: rgba(255, 255, 255, 0.1);
+            --text-color: #ffffff;
+            --text-muted: rgba(255, 255, 255, 0.6);
+            --accent-color: #ffcc00;
+            --accent-hover: #e6b800;
+            --primary-blue: #0b3d91;
+            --danger-color: #ff4d4d;
+            --success-color: #2ed573;
+            --shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            --modal-bg: rgba(7, 22, 44, 0.95);
+        }
+
+        [data-theme="light"] {
+            --bg-color: #f4f6fb;
+            --surface-color: #ffffff;
+            --card-bg: #ffffff;
+            --border-color: rgba(11, 61, 145, 0.15);
+            --text-color: #0c2540;
+            --text-muted: #556080;
+            --accent-color: #0b3d91;
+            --accent-hover: #072c6c;
+            --primary-blue: #ffcc00;
+            --danger-color: #d63031;
+            --success-color: #2ecc71;
+            --shadow: 0 10px 25px rgba(11, 61, 145, 0.08);
+            --modal-bg: rgba(255, 255, 255, 0.98);
+        }
+
+        * {
+            box-sizing: border-box;
+            transition: background 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Outfit', sans-serif;
+            background: var(--bg-color);
+            color: var(--text-color);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* HEADER */
+        .header {
+            background: var(--surface-color);
+            border-bottom: 1px solid var(--border-color);
+            padding: 12px 25px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            z-index: 1000;
+            box-shadow: var(--shadow);
+        }
+
+        .header-logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .header-logo img {
+            height: 38px;
+            width: auto;
+        }
+
+        .header-title h1 {
+            margin: 0;
+            font-size: 16px;
+            font-weight: 700;
+        }
+
+        .header-title p {
+            margin: 2px 0 0 0;
+            font-size: 10px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+
+        .header-controls {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .icon-btn {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .icon-btn:hover {
+            transform: scale(1.05);
+        }
+
+        .logout-btn {
+            padding: 6px 12px;
+            background: var(--danger-color);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: inherit;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+        }
+
+        /* MAP AREA */
+        #map-container {
+            flex: 1;
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        /* ALERTS STATUS BANNER */
+        .status-banner {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 999;
+            padding: 14px 28px;
+            border-radius: 50px;
+            font-weight: 700;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            min-width: 300px;
+            justify-content: center;
+            border: 1px solid rgba(255,255,255,0.15);
+            animation: pulse-shadow 2s infinite;
+        }
+
+        .status-waiting {
+            background: rgba(7, 22, 44, 0.9);
+            color: #ffffff;
+        }
+
+        .status-inside {
+            background: rgba(46, 213, 115, 0.95);
+            color: #ffffff;
+        }
+
+        .status-outside {
+            background: rgba(255, 77, 77, 0.95);
+            color: #ffffff;
+            animation: blink-bg 1s infinite alternate;
+        }
+
+        /* INTERACTION CARD OVERLAY */
+        .controls-overlay {
+            position: absolute;
+            bottom: 25px;
+            left: 25px;
+            z-index: 999;
+            width: 320px;
+            background: var(--modal-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: var(--shadow);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+
+        .controls-overlay h3 {
+            margin: 0 0 15px 0;
+            font-size: 14px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 8px;
+            color: var(--text-color);
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .form-group label {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+
+        select {
+            width: 100%;
+            padding: 10px 12px;
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+            border-radius: 8px;
+            font-family: inherit;
+            outline: none;
+            font-size: 13px;
+        }
+
+        .gps-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 15px;
+            background: rgba(0,0,0,0.15);
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+        }
+
+        .gps-item {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .gps-label {
+            font-size: 9px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+
+        .gps-value {
+            font-size: 12px;
+            font-weight: 600;
+            font-family: monospace;
+        }
+
+        .legend {
+            background: var(--modal-bg);
+            border: 1px solid var(--border-color);
+            padding: 12px;
+            border-radius: 8px;
+            color: var(--text-color);
+            font-size: 11px;
+            line-height: 18px;
+            box-shadow: var(--shadow);
+        }
+
+        .legend b {
+            display: block;
+            margin-bottom: 6px;
+        }
+
+        .legend i {
+            width: 10px;
+            height: 10px;
+            float: left;
+            margin-right: 8px;
+            margin-top: 4px;
+            border-radius: 50%;
+        }
+
+        /* KEYFRAMES ANIMATION */
+        @keyframes pulse-shadow {
+            0% { box-shadow: 0 0 0 0 rgba(0, 0, 0, 0.4); }
+            70% { box-shadow: 0 0 0 15px rgba(0, 0, 0, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(0, 0, 0, 0); }
+        }
+
+        @keyframes blink-bg {
+            0% { background: rgba(255, 77, 77, 0.95); }
+            100% { background: rgba(200, 20, 20, 0.95); }
+        }
+
+        /* RESPONSIVE DESIGN */
+        @media(max-width: 768px) {
+            .header {
+                padding: 10px 15px;
+            }
+
+            .status-banner {
+                width: 90%;
+                top: 10px;
+                font-size: 12px;
+                padding: 10px;
+            }
+
+            .controls-overlay {
+                width: calc(100% - 30px);
+                bottom: 15px;
+                left: 15px;
+                padding: 15px;
+            }
+        }
+
+        /* Custom Leaflet Popup styling */
+        .leaflet-popup-content-wrapper, .leaflet-popup-tip {
+            background: var(--modal-bg) !important;
+            color: var(--text-color) !important;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            box-shadow: var(--shadow);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+        .leaflet-popup-content {
+            font-family: 'Outfit', sans-serif;
+            margin: 12px 15px;
+        }
+        .leaflet-popup-close-button {
+            color: var(--text-muted) !important;
+            padding: 8px 10px 0 0 !important;
+        }
+        .leaflet-popup-close-button:hover {
+            color: var(--text-color) !important;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Top Navigation -->
+    <div class="header">
+        <div class="header-logo">
+            <img src="/static/images/logo.png" alt="ZIMSTAT Logo" onerror="this.src='https://via.placeholder.com/100?text=ZIMSTAT'">
+            <div class="header-title">
+                <h1>ZIMSTAT Tracker</h1>
+                <p>Enumerator GPS Geofencing</p>
+            </div>
+        </div>
+
+        <div class="header-controls">
+            <!-- Light/Dark Mode Switcher -->
+            <button class="icon-btn" id="themeToggle" title="Toggle Light/Dark Mode">
+                <i class="fas fa-moon" id="themeIcon"></i>
+            </button>
+            <button class="logout-btn" onclick="window.location.href='/'">
+                <i class="fas fa-sign-out-alt"></i> Exit
+            </button>
+        </div>
+    </div>
+
+    <!-- Map & Overlay Container -->
+    <div id="map-container">
+        <!-- Live Status Banner -->
+        <div class="status-banner status-waiting" id="statusBanner">
+            <i class="fas fa-satellite-dish fa-spin"></i>
+            <span id="statusMessage">Awaiting target selection & GPS...</span>
+        </div>
+
+        <!-- Float Controls Card -->
+        <div class="controls-overlay">
+            <h3>Tracking Controller</h3>
+            
+            <div class="form-group">
+                <label for="eaSelector">Target Assigned EA</label>
+                <select id="eaSelector" onchange="changeTargetEA()">
+                    <option value="">Select Assigned EA</option>
+                    {% for r in records %}
+                    <option value="{{ r.geocode }}" 
+                            data-boundary="{{ r.boundary_file }}"
+                            data-population="{{ r.estimated_population }}"
+                            data-households="{{ r.households }}">{{ r.geocode }} - {{ r.ea_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>GPS Engine State</label>
+                <div style="font-weight: 700; font-size: 13px; color: var(--accent-color);" id="gpsEngineStatus">
+                    Initializing...
+                </div>
+            </div>
+
+            <!-- Coordinate readouts -->
+            <div class="gps-grid">
+                <div class="gps-item">
+                    <span class="gps-label">Latitude</span>
+                    <span class="gps-value" id="gpsLat">-</span>
+                </div>
+                <div class="gps-item">
+                    <span class="gps-label">Longitude</span>
+                    <span class="gps-value" id="gpsLng">-</span>
+                </div>
+                <div class="gps-item" style="grid-column: span 2; margin-top: 6px; border-top: 1px solid var(--border-color); padding-top: 6px;">
+                    <span class="gps-label">Accuracy / Last Sync</span>
+                    <span class="gps-value" id="gpsAccuracy">-</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- The Map -->
+        <div id="map"></div>
+    </div>
+
+    <!-- AUDIO SCRIPT & LOGIC -->
+    <script>
+        // Theme variables and toggler
+        const themeToggle = document.getElementById('themeToggle');
+        const themeIcon = document.getElementById('themeIcon');
+        
+        let lightTile = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap'
+        });
+        
+        let darkTile = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '© CartoDB'
+        });
+
+        function applyTheme(theme) {
+            if (theme === 'light') {
+                document.documentElement.setAttribute('data-theme', 'light');
+                themeIcon.className = 'fas fa-sun';
+                if (map) {
+                    map.removeLayer(darkTile);
+                    lightTile.addTo(map);
+                }
+            } else {
+                document.documentElement.setAttribute('data-theme', 'dark');
+                themeIcon.className = 'fas fa-moon';
+                if (map) {
+                    map.removeLayer(lightTile);
+                    darkTile.addTo(map);
+                }
+            }
+        }
+
+        const storedTheme = localStorage.getItem('theme') || 'dark';
+
+        // Web Audio Context Synthesised Beep Alert
+        let audioCtx = null;
+        function playBeep(frequency = 600, duration = 200) {
+            try {
+                if (!audioCtx) {
+                    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                if (audioCtx.state === 'suspended') {
+                    audioCtx.resume();
+                }
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.value = frequency;
+                
+                gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration/1000);
+                
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration/1000);
+            } catch(e) {
+                console.error("Synthesizer alert failed", e);
+            }
+        }
+
+        // Setup Leaflet Map
+        var map = L.map('map').setView([-17.835, 31.193], 14);
+        
+        // Add initial tile based on theme
+        if (storedTheme === 'light') {
+            lightTile.addTo(map);
+        } else {
+            darkTile.addTo(map);
+        }
+        
+        applyTheme(storedTheme);
+
+        themeToggle.addEventListener('click', () => {
+            let current = document.documentElement.getAttribute('data-theme') || 'dark';
+            let next = current === 'light' ? 'dark' : 'light';
+            applyTheme(next);
+            localStorage.setItem('theme', next);
+        });
+
+        // Add Legend to map
+        var legend = L.control({position: 'bottomright'});
+        legend.onAdd = function() {
+            var div = L.DomUtil.create('div', 'legend');
+            div.innerHTML = `
+                <b>Map Key</b>
+                <i style="background: red"></i> Target EA Boundary<br>
+                <i style="background: blue"></i> Ward Boundary<br>
+                <i style="background: green"></i> Your Location Marker
+            `;
+            return div;
+        };
+        legend.addTo(map);
+
+        // Load Ward Boundary
+        fetch('/static/ward_boundaries/ward.geojson')
+            .then(res => res.json())
+            .then(data => {
+                L.geoJSON(data, {
+                    style: {
+                        color: 'blue',
+                        weight: 2,
+                        fillOpacity: 0.03
+                    }
+                }).addTo(map);
+            });
+
+        // Global Geofence States
+        let targetBoundaryLayer = null;
+        let targetBoundaryGeoJSON = null;
+        let enumeratorLocationMarker = null;
+        let accuracyCircle = null;
+        let lastKnownGps = null;
+        let isInsideBoundary = null;
+        let soundAlertInterval = null;
+
+        // Change EA selection handler
+        function changeTargetEA() {
+            const selector = document.getElementById('eaSelector');
+            const selectedOption = selector.options[selector.selectedIndex];
+            const boundaryFile = selectedOption.getAttribute('data-boundary');
+            const population = selectedOption.getAttribute('data-population') || '0';
+            const households = selectedOption.getAttribute('data-households') || '0';
+            const eaName = selectedOption.text;
+
+            // Clear previous layer
+            if (targetBoundaryLayer) {
+                map.removeLayer(targetBoundaryLayer);
+                targetBoundaryLayer = null;
+                targetBoundaryGeoJSON = null;
+            }
+
+            if (!boundaryFile) {
+                updateGeofenceStatus("waiting", "Select an EA boundary to start tracking");
+                stopSoundAlerts();
+                return;
+            }
+
+            // Fetch selected geojson boundary
+            fetch(boundaryFile)
+                .then(res => res.json())
+                .then(data => {
+                    targetBoundaryGeoJSON = data;
+                    targetBoundaryLayer = L.geoJSON(data, {
+                        style: {
+                            color: 'red',
+                            weight: 3,
+                            fillOpacity: 0.12
+                        }
+                    }).addTo(map);
+
+                    // Bind popup to show Households and Population on click
+                    const popupContent = `
+                        <div style="font-family: 'Outfit', sans-serif; min-width: 180px;">
+                            <h4 style="margin: 0 0 10px 0; color: var(--accent-color); font-weight: 700; border-bottom: 1px solid var(--border-color); padding-bottom: 6px; font-size: 14px;">
+                                <i class="fas fa-map-marked-alt"></i> ${eaName}
+                            </h4>
+                            <div style="display: grid; grid-template-columns: auto auto; justify-content: space-between; gap: 8px; font-size: 13px;">
+                                <span style="color: var(--text-muted);"><i class="fas fa-home" style="margin-right: 6px;"></i>Households:</span>
+                                <strong style="color: var(--text-color);">${households}</strong>
+                                <span style="color: var(--text-muted);"><i class="fas fa-users" style="margin-right: 6px;"></i>Population:</span>
+                                <strong style="color: var(--text-color);">${population}</strong>
+                            </div>
+                        </div>
+                    `;
+                    targetBoundaryLayer.bindPopup(popupContent);
+
+                    // Fit map view to boundary
+                    map.fitBounds(targetBoundaryLayer.getBounds());
+
+                    // Check geofence with last known GPS if available
+                    if (lastKnownGps) {
+                        checkGeofence(lastKnownGps.lat, lastKnownGps.lng);
+                    } else {
+                        updateGeofenceStatus("waiting", "Target Loaded. Waiting for GPS fix...");
+                    }
+                })
+                .catch(err => {
+                    alert("Failed to load boundary files: " + err);
+                    updateGeofenceStatus("waiting", "Failed to load EA boundary");
+                });
+        }
+
+        // Status Banner display helper
+        function updateGeofenceStatus(state, message) {
+            const banner = document.getElementById('statusBanner');
+            banner.className = "status-banner"; // reset
+            
+            if (state === "inside") {
+                banner.classList.add("status-inside");
+                banner.innerHTML = `<i class="fas fa-circle-check"></i> ${message}`;
+            } else if (state === "outside") {
+                banner.classList.add("status-outside");
+                banner.innerHTML = `<i class="fas fa-circle-exclamation"></i> ${message}`;
+            } else {
+                banner.classList.add("status-waiting");
+                banner.innerHTML = `<i class="fas fa-satellite-dish fa-spin"></i> ${message}`;
+            }
+        }
+
+        // Geofencing checker using Turf.js
+        function checkGeofence(lat, lng) {
+            if (!targetBoundaryGeoJSON) return;
+
+            // Build turf points and feature
+            const pt = turf.point([lng, lat]);
+            // Extract feature polygon
+            const poly = targetBoundaryGeoJSON.features[0];
+            
+            const inside = turf.booleanPointInPolygon(pt, poly);
+            const eaName = document.getElementById('eaSelector').options[document.getElementById('eaSelector').selectedIndex].text;
+            
+            if (inside) {
+                isInsideBoundary = true;
+                updateGeofenceStatus("inside", `Inside Boundary: ${eaName}`);
+                stopSoundAlerts();
+            } else {
+                isInsideBoundary = false;
+                
+                // Calculate distance to nearest boundary
+                let distanceText = "";
+                try {
+                    const line = turf.polygonToLine(poly);
+                    const distanceMeters = turf.pointToLineDistance(pt, line, {units: 'meters'});
+                    distanceText = ` (Outside by ${Math.round(distanceMeters)}m)`;
+                } catch(e) {
+                    console.error("Boundary distance calculation error", e);
+                }
+
+                updateGeofenceStatus("outside", `Geofence Breach: Outside ${eaName}${distanceText}`);
+                startSoundAlerts();
+            }
+        }
+
+        // Sound Alerts repeating beep loop
+        function startSoundAlerts() {
+            if (soundAlertInterval) return;
+            // Play initial beep
+            playBeep(800, 300);
+            
+            // Loop beep alert
+            soundAlertInterval = setInterval(() => {
+                // High warning pitch double beep
+                playBeep(850, 150);
+                setTimeout(() => { playBeep(850, 150); }, 250);
+            }, 4000);
+        }
+
+        function stopSoundAlerts() {
+            if (soundAlertInterval) {
+                clearInterval(soundAlertInterval);
+                soundAlertInterval = null;
+            }
+        }
+
+        // GPS watcher
+        if (navigator.geolocation) {
+            navigator.geolocation.watchPosition(
+                function(position) {
+                    const lat = position.coords.latitude;
+                    const lng = position.coords.longitude;
+                    const accuracy = position.coords.accuracy;
+                    const time = new Date(position.timestamp).toLocaleTimeString();
+                    
+                    lastKnownGps = { lat, lng };
+
+                    // Update UI readouts
+                    document.getElementById('gpsEngineStatus').textContent = "Engine Active (GPS Fix OK)";
+                    document.getElementById('gpsEngineStatus').style.color = "var(--success-color)";
+                    document.getElementById('gpsLat').textContent = lat.toFixed(6);
+                    document.getElementById('gpsLng').textContent = lng.toFixed(6);
+                    document.getElementById('gpsAccuracy').textContent = `${Math.round(accuracy)}m / ${time}`;
+
+                    // Update map markers
+                    if (enumeratorLocationMarker) {
+                        map.removeLayer(enumeratorLocationMarker);
+                    }
+                    if (accuracyCircle) {
+                        map.removeLayer(accuracyCircle);
+                    }
+
+                    // Green dot marker for enumerator
+                    enumeratorLocationMarker = L.circleMarker([lat, lng], {
+                        radius: 8,
+                        color: 'white',
+                        weight: 2,
+                        fillColor: '#2ed573',
+                        fillOpacity: 1
+                    }).addTo(map).bindPopup("Your GPS Location");
+
+                    accuracyCircle = L.circle([lat, lng], {
+                        radius: accuracy,
+                        color: '#2ed573',
+                        weight: 1,
+                        fillOpacity: 0.08
+                    }).addTo(map);
+
+                    // Check Geofence
+                    if (targetBoundaryGeoJSON) {
+                        checkGeofence(lat, lng);
+                    }
+                    
+                    // Pan map to enumerator location if no boundary selected
+                    if (!targetBoundaryGeoJSON) {
+                        map.setView([lat, lng], 15);
+                    }
+                },
+                function(error) {
+                    document.getElementById('gpsEngineStatus').textContent = "Engine Failed: No GPS Signal";
+                    document.getElementById('gpsEngineStatus').style.color = "var(--danger-color)";
+                    alert("GPS Geolocation access denied or unavailable.");
+                },
+                {
+                    enableHighAccuracy: true,
+                    maximumAge: 0,
+                    timeout: 8000
+                }
+            );
+        } else {
+            document.getElementById('gpsEngineStatus').textContent = "Browser Geolocation Unsupported";
+            document.getElementById('gpsEngineStatus').style.color = "var(--danger-color)";
+        }
+    </script>
+</body>
+</html>
